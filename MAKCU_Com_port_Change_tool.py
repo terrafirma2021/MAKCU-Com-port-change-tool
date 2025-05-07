@@ -60,15 +60,24 @@ def list_usb_devices():
         dev_list.append(f"Port: {port.device}, VID: {vid}, PID: {pid}, Name: {name}")
     return dev_list
 
-def update_registry_name(vid, pid, new_name):
+def update_registry_name(vid, pid, new_name, com_port=None):
     key_path = f"SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_{vid:04X}&PID_{pid:04X}"
+    if com_port:
+        port_suffix = f" ({com_port})"
+        max_name_len = MAX_NAME_LENGTH - len(port_suffix)
+        if len(new_name) > max_name_len:
+            new_name = new_name[:max_name_len]
+        friendly_name = f"{new_name}{port_suffix}"
+    else:
+        friendly_name = new_name[:MAX_NAME_LENGTH]
+    
     try:
         key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_ALL_ACCESS)
         for i in range(winreg.QueryInfoKey(key)[0]):
             subkey_name = winreg.EnumKey(key, i)
             subkey_path = f"{key_path}\\{subkey_name}"
             subkey = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, subkey_path, 0, winreg.KEY_ALL_ACCESS)
-            winreg.SetValueEx(subkey, "FriendlyName", 0, winreg.REG_SZ, new_name)
+            winreg.SetValueEx(subkey, "FriendlyName", 0, winreg.REG_SZ, friendly_name)
             winreg.CloseKey(subkey)
         winreg.CloseKey(key)
         return True
@@ -91,7 +100,7 @@ def reenumerate_usb():
         return False
 
 def main():
-    os.system('title MAKCU com port changer tool')  # Set terminal title
+    os.system('title MAKCU com port changer tool')
     if not is_admin():
         print("This script requires administrative privileges. Attempting to relaunch as Administrator...")
         run_as_admin()
@@ -129,40 +138,41 @@ def main():
             if device_name is None:
                 print("Device not found. Please insert the device.")
                 continue
-            if update_registry_name(VID, PID, TARGET_DESC):
+            if update_registry_name(VID, PID, TARGET_DESC, com_port):
                 if reenumerate_usb():
-                    last_set_name = TARGET_DESC
-                    print(f"Device name reverted to {TARGET_DESC}")
+                    last_set_name = f"{TARGET_DESC} ({com_port})" if com_port else TARGET_DESC
+                    print(f"Device name reverted to {last_set_name}")
                 else:
                     print("Reenumeration failed. Try manual scan in Device Manager.")
         elif choice == '2':
             if device_name is None:
                 print("Device not found. Please insert the device.")
                 continue
-            if update_registry_name(VID, PID, DEFAULT_NAME):
+            if update_registry_name(VID, PID, DEFAULT_NAME, com_port):
                 if reenumerate_usb():
-                    last_set_name = DEFAULT_NAME
-                    print(f"Device name set to {DEFAULT_NAME}")
+                    last_set_name = f"{DEFAULT_NAME} ({com_port})" if com_port else DEFAULT_NAME
+                    print(f"Device name set to {last_set_name}")
                 else:
                     print("Reenumeration failed. Try manual scan in Device Manager.")
         elif choice == '3':
             if device_name is None:
                 print("Device not found. Please insert the device.")
                 continue
-            print(f"Enter new name (max {MAX_NAME_LENGTH} chars, press Esc to cancel):")
+            print(f"Enter new name (max {MAX_NAME_LENGTH - 8} chars, press Esc to cancel):")
             new_name = ""
             while True:
                 if keyboard.is_pressed('esc'):
                     break
                 new_name = input()
                 if new_name:
-                    if len(new_name) > MAX_NAME_LENGTH:
-                        print(f"Name too long, max {MAX_NAME_LENGTH} characters")
+                    max_name_len = MAX_NAME_LENGTH - (len(f" ({com_port})") if com_port else 0)
+                    if len(new_name) > max_name_len:
+                        print(f"Name too long, max {max_name_len} characters")
                     else:
-                        if update_registry_name(VID, PID, new_name):
+                        if update_registry_name(VID, PID, new_name, com_port):
                             if reenumerate_usb():
-                                last_set_name = new_name
-                                print(f"Device name set to {new_name}")
+                                last_set_name = f"{new_name} ({com_port})" if com_port else new_name
+                                print(f"Device name set to {last_set_name}")
                             else:
                                 print("Reenumeration failed. Try manual scan in Device Manager.")
                         break
